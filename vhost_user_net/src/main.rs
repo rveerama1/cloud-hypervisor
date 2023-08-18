@@ -15,11 +15,7 @@ struct TopLevel {
     #[argh(option, long = "net-backend")]
     /// vhost-user-net backend parameters
     /// ip=<ip_addr>,mask=<net_mask>,socket=<socket_path>,client=on|off,num_queues=<number_of_queues>,queue_size=<size_of_each_queue>,tap=<if_name>
-    backend_command: Option<String>,
-
-    #[argh(switch, short = 'V', long = "version")]
-    /// print version information
-    version: bool,
+    backend_command: String,
 }
 
 fn main() {
@@ -27,15 +23,5 @@ fn main() {
 
     let toplevel: TopLevel = argh::from_env();
 
-    if toplevel.version {
-        println!("{} {}", env!("CARGO_BIN_NAME"), env!("BUILD_VERSION"));
-        return;
-    }
-
-    if toplevel.backend_command.is_none() {
-        println!("Please specify --net-backend");
-        std::process::exit(1)
-    }
-
-    start_net_backend(&toplevel.backend_command.unwrap());
+    start_net_backend(&toplevel.backend_command);
 }
