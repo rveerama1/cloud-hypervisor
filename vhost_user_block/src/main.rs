@@ -19,11 +19,7 @@ struct TopLevel {
     #[argh(option, long = "block-backend")]
     /// vhost-user-block backend parameters
     /// path=<image_path>,socket=<socket_path>,num_queues=<number_of_queues>,queue_size=<size_of_each_queue>,readonly=true|false,direct=true|false,poll_queue=true|false
-    backend_command: Option<String>,
-
-    #[argh(switch, short = 'V', long = "version")]
-    /// print version information
-    version: bool,
+    backend_command: String,
 }
 
 fn main() {
@@ -31,15 +27,5 @@ fn main() {
 
     let toplevel: TopLevel = argh::from_env();
 
-    if toplevel.version {
-        println!("{} {}", env!("CARGO_BIN_NAME"), env!("BUILD_VERSION"));
-        return;
-    }
-
-    if toplevel.backend_command.is_none() {
-        println!("Please specify --block-backend");
-        std::process::exit(1)
-    }
-
-    start_block_backend(&toplevel.backend_command.unwrap());
+    start_block_backend(&toplevel.backend_command);
 }
