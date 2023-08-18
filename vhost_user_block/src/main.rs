@@ -10,22 +10,25 @@
 
 extern crate vhost_user_block;
 
-use argh::FromArgs;
+use clap::{Arg, Command};
 use vhost_user_block::start_block_backend;
-
-#[derive(FromArgs)]
-/// Launch a vhost-user-blk backend.
-struct TopLevel {
-    #[argh(option, long = "block-backend")]
-    /// vhost-user-block backend parameters
-    /// path=<image_path>,socket=<socket_path>,num_queues=<number_of_queues>,queue_size=<size_of_each_queue>,readonly=true|false,direct=true|false,poll_queue=true|false
-    backend_command: String,
-}
 
 fn main() {
     env_logger::init();
 
-    let toplevel: TopLevel = argh::from_env();
+    let cmd_arguments = Command::new("vhost-user-blk backend")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author(env!("CARGO_PKG_AUTHORS"))
+        .about("Launch a vhost-user-blk backend.")
+        .arg(
+            Arg::new("block-backend")
+                .long("block-backend")
+                .help(vhost_user_block::SYNTAX)
+                .num_args(1)
+                .required(true),
+        )
+        .get_matches();
 
-    start_block_backend(&toplevel.backend_command);
+    let backend_command = cmd_arguments.get_one::<String>("block-backend").unwrap();
+    start_block_backend(backend_command);
 }

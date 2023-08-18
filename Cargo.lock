@@ -2220,8 +2220,8 @@ dependencies = [
 name = "vhost_user_block"
 version = "0.1.0"
 dependencies = [
- "argh",
- "block",
+ "block_util",
+ "clap",
  "env_logger",
  "epoll",
  "libc",
