@@ -7,7 +7,7 @@ use api_client::simple_api_command;
 use api_client::simple_api_command_with_fds;
 use api_client::simple_api_full_command;
 use api_client::Error as ApiClientError;
-use argh::FromArgs;
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use option_parser::{ByteSized, ByteSizedParseError};
 use std::fmt;
 use std::io::Read;
@@ -652,349 +652,417 @@ fn create_data(path: &str) -> Result<String, Error> {
     Ok(data)
 }
 
-#[derive(FromArgs, PartialEq, Debug)]
-#[doc = "Remotely control a cloud-hypervisor VMM.\n\nPlease refer to cloud-hypervisor for configuration syntaxes."]
-struct TopLevel {
-    #[argh(subcommand)]
-    command: SubCommandEnum,
+fn do_command(matches: &ArgMatches) -> Result<(), Error> {
+    let mut socket = UnixStream::connect(matches.get_one::<String>("api-socket").unwrap())
+        .map_err(Error::Connect)?;
 
-    #[argh(option, long = "api-socket")]
-    /// HTTP API socket path (UNIX domain socket)
-    api_socket: Option<String>,
-
-    #[cfg(feature = "dbus_api")]
-    #[argh(option, long = "dbus-service-name")]
-    /// well known name of the dbus service
-    dbus_name: Option<String>,
-
-    #[cfg(feature = "dbus_api")]
-    #[argh(option, long = "dbus-object-path")]
-    /// object path which the interface is being served at
-    dbus_path: Option<String>,
-
-    #[cfg(feature = "dbus_api")]
-    #[argh(switch, long = "dbus-system-bus")]
-    /// use the system bus instead of a session bus
-    dbus_system_bus: bool,
+    match matches.subcommand_name() {
+        Some("info") => {
+            simple_api_command(&mut socket, "GET", "info", None).map_err(Error::ApiClient)
+        }
+        Some("counters") => {
+            simple_api_command(&mut socket, "GET", "counters", None).map_err(Error::ApiClient)
+        }
+        Some("ping") => {
+            simple_api_full_command(&mut socket, "GET", "vmm.ping", None).map_err(Error::ApiClient)
+        }
+        Some("shutdown-vmm") => simple_api_full_command(&mut socket, "PUT", "vmm.shutdown", None)
+            .map_err(Error::ApiClient),
+        Some("resize") => resize_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("resize")
+                .unwrap()
+                .get_one::<String>("cpus")
+                .map(|x| x as &str),
+            matches
+                .subcommand_matches("resize")
+                .unwrap()
+                .get_one::<String>("memory")
+                .map(|x| x as &str),
+            matches
+                .subcommand_matches("resize")
+                .unwrap()
+                .get_one::<String>("balloon")
+                .map(|x| x as &str),
+        ),
+        Some("resize-zone") => resize_zone_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("resize-zone")
+                .unwrap()
+                .get_one::<String>("id")
+                .unwrap(),
+            matches
+                .subcommand_matches("resize-zone")
+                .unwrap()
+                .get_one::<String>("size")
+                .unwrap(),
+        ),
+        Some("add-device") => add_device_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("add-device")
+                .unwrap()
+                .get_one::<String>("device_config")
+                .unwrap(),
+        ),
+        Some("remove-device") => remove_device_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("remove-device")
+                .unwrap()
+                .get_one::<String>("id")
+                .unwrap(),
+        ),
+        Some("add-disk") => add_disk_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("add-disk")
+                .unwrap()
+                .get_one::<String>("disk_config")
+                .unwrap(),
+        ),
+        Some("add-fs") => add_fs_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("add-fs")
+                .unwrap()
+                .get_one::<String>("fs_config")
+                .unwrap(),
+        ),
+        Some("add-pmem") => add_pmem_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("add-pmem")
+                .unwrap()
+                .get_one::<String>("pmem_config")
+                .unwrap(),
+        ),
+        Some("add-net") => add_net_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("add-net")
+                .unwrap()
+                .get_one::<String>("net_config")
+                .unwrap(),
+        ),
+        Some("add-user-device") => add_user_device_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("add-user-device")
+                .unwrap()
+                .get_one::<String>("device_config")
+                .unwrap(),
+        ),
+        Some("add-vdpa") => add_vdpa_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("add-vdpa")
+                .unwrap()
+                .get_one::<String>("vdpa_config")
+                .unwrap(),
+        ),
+        Some("add-vsock") => add_vsock_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("add-vsock")
+                .unwrap()
+                .get_one::<String>("vsock_config")
+                .unwrap(),
+        ),
+        Some("snapshot") => snapshot_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("snapshot")
+                .unwrap()
+                .get_one::<String>("snapshot_config")
+                .unwrap(),
+        ),
+        Some("restore") => restore_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("restore")
+                .unwrap()
+                .get_one::<String>("restore_config")
+                .unwrap(),
+        ),
+        Some("coredump") => coredump_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("coredump")
+                .unwrap()
+                .get_one::<String>("coredump_config")
+                .unwrap(),
+        ),
+        Some("send-migration") => send_migration_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("send-migration")
+                .unwrap()
+                .get_one::<String>("send_migration_config")
+                .unwrap(),
+            matches
+                .subcommand_matches("send-migration")
+                .unwrap()
+                .get_flag("send_migration_local"),
+        ),
+        Some("receive-migration") => receive_migration_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("receive-migration")
+                .unwrap()
+                .get_one::<String>("receive_migration_config")
+                .unwrap(),
+        ),
+        Some("create") => create_api_command(
+            &mut socket,
+            matches
+                .subcommand_matches("create")
+                .unwrap()
+                .get_one::<String>("path")
+                .unwrap(),
+        ),
+        Some(c) => simple_api_command(&mut socket, "PUT", c, None).map_err(Error::ApiClient),
+        None => unreachable!(),
+    }
 }
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand)]
-enum SubCommandEnum {
-    AddDevice(AddDeviceSubcommand),
-    AddDisk(AddDiskSubcommand),
-    AddFs(AddFsSubcommand),
-    AddPmem(AddPmemSubcommand),
-    AddNet(AddNetSubcommand),
-    AddUserDevice(AddUserDeviceSubcommand),
-    AddVdpa(AddVdpaSubcommand),
-    AddVsock(AddVsockSubcommand),
-    RemoveDevice(RemoveDeviceSubcommand),
-    Info(InfoSubcommand),
-    Counters(CountersSubcommand),
-    Pause(PauseSubcommand),
-    Reboot(RebootSubcommand),
-    PowerButton(PowerButtonSubcommand),
-    Resume(ResumeSubcommand),
-    Boot(BootSubcommand),
-    Delete(DeleteSubcommand),
-    Shutdown(ShutdownSubcommand),
-    Ping(PingSubcommand),
-    ShutdownVmm(ShutdownVmmSubcommand),
-    Resize(ResizeSubcommand),
-    ResizeZone(ResizeZoneSubcommand),
-    Snapshot(SnapshotSubcommand),
-    Restore(RestoreSubcommand),
-    Coredump(CoredumpSubcommand),
-    SendMigration(SendMigrationSubcommand),
-    ReceiveMigration(ReceiveMigrationSubcommand),
-    Create(CreateSubcommand),
-    Version(VersionSubcommand),
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "add-device")]
-/// Add VFIO device
-struct AddDeviceSubcommand {
-    #[argh(positional)]
-    /// device config
-    device_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "add-disk")]
-/// Add block device
-struct AddDiskSubcommand {
-    #[argh(positional)]
-    /// disk config
-    disk_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "add-fs")]
-/// Add virtio-fs backed fs device
-struct AddFsSubcommand {
-    #[argh(positional)]
-    /// virtio-fs config
-    fs_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "add-pmem")]
-/// Add virtio-fs backed fs device
-struct AddPmemSubcommand {
-    #[argh(positional)]
-    /// pmem config
-    pmem_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "add-net")]
-/// Add virtio-fs backed fs device
-struct AddNetSubcommand {
-    #[argh(positional)]
-    /// net config
-    net_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "add-user-device")]
-/// Add userspace device
-struct AddUserDeviceSubcommand {
-    #[argh(positional)]
-    /// device config
-    device_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "add-vdpa")]
-/// Add vdpa device
-struct AddVdpaSubcommand {
-    #[argh(positional)]
-    /// vdpa config
-    vdpa_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "add-vsock")]
-/// Add vsock device
-struct AddVsockSubcommand {
-    #[argh(positional)]
-    /// vsock config
-    vsock_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "remove-device")]
-/// Remove VFIO device
-struct RemoveDeviceSubcommand {
-    #[argh(positional)]
-    /// device config
-    device_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "info")]
-/// Information on the VM
-struct InfoSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "counters")]
-/// Counters from the VM
-struct CountersSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "pause")]
-/// Pause the VM
-struct PauseSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "reboot")]
-/// Reboot the VM
-struct RebootSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "power-button")]
-/// Trigger a power button in the VM
-struct PowerButtonSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "resume")]
-/// Resume the VM
-struct ResumeSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "boot")]
-/// Boot a created VM
-struct BootSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "delete")]
-/// Delete a VM
-struct DeleteSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "shutdown")]
-/// Shutdown a VM
-struct ShutdownSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "ping")]
-/// Ping the VMM to check for API server availability
-struct PingSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "shutdown-vmm")]
-/// Shutdown the VMM
-struct ShutdownVmmSubcommand {}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "resize")]
-/// Resize the VM
-struct ResizeSubcommand {
-    #[argh(option, long = "cpus")]
-    /// new VCPUs count
-    cpus: Option<u8>,
-
-    #[argh(option, long = "memory")]
-    /// new memory size in bytes (supports K/M/G suffix)"
-    memory: Option<String>,
-
-    #[argh(option, long = "balloon")]
-    /// new balloon size in bytes (supports K/M/G suffix)"
-    balloon: Option<String>,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "resize-zone")]
-/// Resize a memory zone
-struct ResizeZoneSubcommand {
-    #[argh(option, long = "id")]
-    /// memory zone identifier
-    id: String,
-
-    #[argh(option, long = "size")]
-    /// new memory size in bytes (supports K/M/G suffix)"
-    size: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "snapshot")]
-/// Create a snapshot from VM
-struct SnapshotSubcommand {
-    #[argh(positional)]
-    /// destination_url
-    snapshot_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "restore")]
-/// Restore VM from a snapshot
-struct RestoreSubcommand {
-    #[argh(positional)]
-    /// restore config
-    restore_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "coredump")]
-/// Create a coredump from VM
-struct CoredumpSubcommand {
-    #[argh(positional)]
-    /// coredump config
-    coredump_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "send-migration")]
-/// Initiate a VM migration
-struct SendMigrationSubcommand {
-    #[argh(switch, long = "local")]
-    /// local migration
-    send_migration_local: bool,
-
-    #[argh(positional)]
-    /// destination_url
-    send_migration_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "receive-migration")]
-/// Receive a VM migration
-struct ReceiveMigrationSubcommand {
-    #[argh(positional)]
-    /// receiver url
-    receive_migration_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "create")]
-/// Create a VM from a JSON configuration
-struct CreateSubcommand {
-    #[argh(positional, default = "String::from(\"-\")")]
-    /// vm config
-    vm_config: String,
-}
-
-#[derive(FromArgs, PartialEq, Debug)]
-#[argh(subcommand, name = "version")]
-/// Print version information
-struct VersionSubcommand {}
 
 fn main() {
-    let toplevel: TopLevel = argh::from_env();
+    let app = Command::new("ch-remote")
+        .author(env!("CARGO_PKG_AUTHORS"))
+        .subcommand_required(true)
+        .about("Remotely control a cloud-hypervisor VMM.")
+        .arg(
+            Arg::new("api-socket")
+                .long("api-socket")
+                .help("HTTP API socket path (UNIX domain socket).")
+                .num_args(1)
+                .required(true),
+        )
+        .subcommand(
+            Command::new("add-device").about("Add VFIO device").arg(
+                Arg::new("device_config")
+                    .index(1)
+                    .help(vmm::config::DeviceConfig::SYNTAX),
+            ),
+        )
+        .subcommand(
+            Command::new("add-disk").about("Add block device").arg(
+                Arg::new("disk_config")
+                    .index(1)
+                    .help(vmm::config::DiskConfig::SYNTAX),
+            ),
+        )
+        .subcommand(
+            Command::new("add-fs")
+                .about("Add virtio-fs backed fs device")
+                .arg(
+                    Arg::new("fs_config")
+                        .index(1)
+                        .help(vmm::config::FsConfig::SYNTAX),
+                ),
+        )
+        .subcommand(
+            Command::new("add-pmem")
+                .about("Add persistent memory device")
+                .arg(
+                    Arg::new("pmem_config")
+                        .index(1)
+                        .help(vmm::config::PmemConfig::SYNTAX),
+                ),
+        )
+        .subcommand(
+            Command::new("add-net").about("Add network device").arg(
+                Arg::new("net_config")
+                    .index(1)
+                    .help(vmm::config::NetConfig::SYNTAX),
+            ),
+        )
+        .subcommand(
+            Command::new("add-user-device")
+                .about("Add userspace device")
+                .arg(
+                    Arg::new("device_config")
+                        .index(1)
+                        .help(vmm::config::UserDeviceConfig::SYNTAX),
+                ),
+        )
+        .subcommand(
+            Command::new("add-vdpa").about("Add vDPA device").arg(
+                Arg::new("vdpa_config")
+                    .index(1)
+                    .help(vmm::config::VdpaConfig::SYNTAX),
+            ),
+        )
+        .subcommand(
+            Command::new("add-vsock").about("Add vsock device").arg(
+                Arg::new("vsock_config")
+                    .index(1)
+                    .help(vmm::config::VsockConfig::SYNTAX),
+            ),
+        )
+        .subcommand(
+            Command::new("remove-device")
+                .about("Remove VFIO device")
+                .arg(Arg::new("id").index(1).help("<device_id>")),
+        )
+        .subcommand(Command::new("info").about("Info on the VM"))
+        .subcommand(Command::new("counters").about("Counters from the VM"))
+        .subcommand(Command::new("pause").about("Pause the VM"))
+        .subcommand(Command::new("reboot").about("Reboot the VM"))
+        .subcommand(Command::new("power-button").about("Trigger a power button in the VM"))
+        .subcommand(
+            Command::new("resize")
+                .about("Resize the VM")
+                .arg(
+                    Arg::new("cpus")
+                        .long("cpus")
+                        .help("New vCPUs count")
+                        .num_args(1),
+                )
+                .arg(
+                    Arg::new("memory")
+                        .long("memory")
+                        .help("New memory size in bytes (supports K/M/G suffix)")
+                        .num_args(1),
+                )
+                .arg(
+                    Arg::new("balloon")
+                        .long("balloon")
+                        .help("New balloon size in bytes (supports K/M/G suffix)")
+                        .num_args(1),
+                ),
+        )
+        .subcommand(
+            Command::new("resize-zone")
+                .about("Resize a memory zone")
+                .arg(
+                    Arg::new("id")
+                        .long("id")
+                        .help("Memory zone identifier")
+                        .num_args(1),
+                )
+                .arg(
+                    Arg::new("size")
+                        .long("size")
+                        .help("New memory zone size in bytes (supports K/M/G suffix)")
+                        .num_args(1),
+                ),
+        )
+        .subcommand(Command::new("resume").about("Resume the VM"))
+        .subcommand(Command::new("boot").about("Boot a created VM"))
+        .subcommand(Command::new("delete").about("Delete a VM"))
+        .subcommand(Command::new("shutdown").about("Shutdown the VM"))
+        .subcommand(
+            Command::new("snapshot")
+                .about("Create a snapshot from VM")
+                .arg(
+                    Arg::new("snapshot_config")
+                        .index(1)
+                        .help("<destination_url>"),
+                ),
+        )
+        .subcommand(
+            Command::new("restore")
+                .about("Restore VM from a snapshot")
+                .arg(
+                    Arg::new("restore_config")
+                        .index(1)
+                        .help(vmm::config::RestoreConfig::SYNTAX),
+                ),
+        )
+        .subcommand(
+            Command::new("coredump")
+                .about("Create a coredump from VM")
+                .arg(Arg::new("coredump_config").index(1).help("<file_path>")),
+        )
+        .subcommand(
+            Command::new("send-migration")
+                .about("Initiate a VM migration")
+                .arg(
+                    Arg::new("send_migration_config")
+                        .index(1)
+                        .help("<destination_url>"),
+                )
+                .arg(
+                    Arg::new("send_migration_local")
+                        .long("local")
+                        .num_args(0)
+                        .action(ArgAction::SetTrue),
+                ),
+        )
+        .subcommand(
+            Command::new("receive-migration")
+                .about("Receive a VM migration")
+                .arg(
+                    Arg::new("receive_migration_config")
+                        .index(1)
+                        .help("<receiver_url>"),
+                ),
+        )
+        .subcommand(
+            Command::new("create")
+                .about("Create VM from a JSON configuration")
+                .arg(Arg::new("path").index(1).default_value("-")),
+        )
+        .subcommand(Command::new("ping").about("Ping the VMM to check for API server availability"))
+        .subcommand(Command::new("shutdown-vmm").about("Shutdown the VMM"));
 
-    if matches!(toplevel.command, SubCommandEnum::Version(_)) {
-        println!("{} {}", env!("CARGO_BIN_NAME"), env!("BUILD_VERSION"));
-        return;
-    }
+// <<<<<<< HEAD
+//     if matches!(toplevel.command, SubCommandEnum::Version(_)) {
+//         println!("{} {}", env!("CARGO_BIN_NAME"), env!("BUILD_VERSION"));
+//         return;
+//     }
 
-    let mut target_api = match (
-        &toplevel.api_socket,
-        #[cfg(feature = "dbus_api")]
-        &toplevel.dbus_name,
-        #[cfg(feature = "dbus_api")]
-        &toplevel.dbus_path,
-    ) {
-        #[cfg(not(feature = "dbus_api"))]
-        (Some(ref api_socket),) => TargetApi::HttpApi(
-            UnixStream::connect(api_socket).unwrap_or_else(|e| {
-                eprintln!("Error opening HTTP socket: {e}");
-                process::exit(1)
-            }),
-            PhantomData,
-        ),
-        #[cfg(feature = "dbus_api")]
-        (Some(ref api_socket), None, None) => TargetApi::HttpApi(
-            UnixStream::connect(api_socket).unwrap_or_else(|e| {
-                eprintln!("Error opening HTTP socket: {e}");
-                process::exit(1)
-            }),
-            PhantomData,
-        ),
-        #[cfg(feature = "dbus_api")]
-        (None, Some(ref dbus_name), Some(ref dbus_path)) => TargetApi::DBusApi(
-            DBusApi1ProxyBlocking::new_connection(dbus_name, dbus_path, toplevel.dbus_system_bus)
-                .map_err(Error::DBusApiClient)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error creating D-Bus proxy: {e}");
-                    process::exit(1)
-                }),
-        ),
-        #[cfg(feature = "dbus_api")]
-        (Some(_), Some(_) | None, Some(_) | None) => {
-            println!(
-                "`api-socket` and (dbus-service-name or dbus-object-path) are mutually exclusive"
-            );
-            process::exit(1);
-        }
-        _ => {
-            println!("Please either provide the api-socket option or dbus-service-name and dbus-object-path options");
-            process::exit(1);
-        }
-    };
+//     let mut target_api = match (
+//         &toplevel.api_socket,
+//         #[cfg(feature = "dbus_api")]
+//         &toplevel.dbus_name,
+//         #[cfg(feature = "dbus_api")]
+//         &toplevel.dbus_path,
+//     ) {
+//         #[cfg(not(feature = "dbus_api"))]
+//         (Some(ref api_socket),) => TargetApi::HttpApi(
+//             UnixStream::connect(api_socket).unwrap_or_else(|e| {
+//                 eprintln!("Error opening HTTP socket: {e}");
+//                 process::exit(1)
+//             }),
+//             PhantomData,
+//         ),
+//         #[cfg(feature = "dbus_api")]
+//         (Some(ref api_socket), None, None) => TargetApi::HttpApi(
+//             UnixStream::connect(api_socket).unwrap_or_else(|e| {
+//                 eprintln!("Error opening HTTP socket: {e}");
+//                 process::exit(1)
+//             }),
+//             PhantomData,
+//         ),
+//         #[cfg(feature = "dbus_api")]
+//         (None, Some(ref dbus_name), Some(ref dbus_path)) => TargetApi::DBusApi(
+//             DBusApi1ProxyBlocking::new_connection(dbus_name, dbus_path, toplevel.dbus_system_bus)
+//                 .map_err(Error::DBusApiClient)
+//                 .unwrap_or_else(|e| {
+//                     eprintln!("Error creating D-Bus proxy: {e}");
+//                     process::exit(1)
+//                 }),
+//         ),
+//         #[cfg(feature = "dbus_api")]
+//         (Some(_), Some(_) | None, Some(_) | None) => {
+//             println!(
+//                 "`api-socket` and (dbus-service-name or dbus-object-path) are mutually exclusive"
+//             );
+//             process::exit(1);
+//         }
+//         _ => {
+//             println!("Please either provide the api-socket option or dbus-service-name and dbus-object-path options");
+//             process::exit(1);
+//         }
+//     };
 
-    if let Err(e) = target_api.do_command(&toplevel) {
+    let matches = app.get_matches();
+
+    if let Err(e) = do_command(&matches) {
         eprintln!("Error running command: {e}");
         process::exit(1)
     };

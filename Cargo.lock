@@ -373,7 +373,6 @@ version = "34.0.0"
 dependencies = [
  "anyhow",
  "api_client",
- "argh",
  "dhat",
  "clap",
  "dirs",
